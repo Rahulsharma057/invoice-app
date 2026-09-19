@@ -31,12 +31,23 @@ function getInvoiceSeq(invoiceNo) {
 // Finds another invoice (of ANY type) that already uses the same trailing number.
 async function findSeqConflict(invoiceNo, excludeId) {
   const seq = getInvoiceSeq(invoiceNo);
+
   if (seq === null) return null;
 
-  const filter = { invoiceNo: { $regex: `(^|\\D)0*${seq}\\s*$` } };
-  if (excludeId) filter._id = { $ne: excludeId };
+  const filter = {
+    invoiceNo: {
+      $regex: `(^|\\D)0*${seq}\\s*$`,
+      $options: "i",
+    },
+  };
 
-  return Invoice.findOne(filter).select("invoiceNo").lean();
+  if (excludeId) {
+    filter._id = { $ne: excludeId };
+  }
+
+  return Invoice.findOne(filter)
+    .select("invoiceNo")
+    .lean();
 }
 
 function conflictMessage(invoiceNo, conflict) {
@@ -81,17 +92,47 @@ function compareInvoiceNo(a, b) {
 
 // Create a new invoice
 exports.createInvoice = asyncHandler(async (req, res) => {
-  const conflict = await findSeqConflict(req.body.invoiceNo);
-  if (conflict) {
-    return res.status(409).json({ message: conflictMessage(req.body.invoiceNo, conflict) });
+  const invoiceNo = String(req.body.invoiceNo || "").trim();
+
+  if (!invoiceNo) {
+    return res.status(400).json({
+      message: "Invoice number is required.",
+    });
   }
 
-  const invoice = await Invoice.create(withGrandTotal(req.body));
+  // First: check shared sequence
+  const conflict = await findSeqConflict(invoiceNo);
 
-  // Best-effort: never blocks/breaks the save.
-  bumpNumbering(invoice.invoiceNo);
+  if (conflict) {
+    return res.status(409).json({
+      message: conflictMessage(invoiceNo, conflict),
+      code: "DUPLICATE_INVOICE_NUMBER",
+    });
+  }
 
-  res.status(201).json(invoice);
+  try {
+    const invoice = await Invoice.create(
+      withGrandTotal({
+        ...req.body,
+        invoiceNo,
+      })
+    );
+
+    // Best effort only
+    bumpNumbering(invoice.invoiceNo);
+
+    return res.status(201).json(invoice);
+  } catch (error) {
+    // MongoDB unique index duplicate
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        message: `Invoice number ${invoiceNo} is already used. Please use a different invoice number.`,
+        code: "DUPLICATE_INVOICE_NUMBER",
+      });
+    }
+
+    throw error;
+  }
 });
 
 // GET /api/invoices  — server-side paginated, searchable, sortable list.
@@ -167,28 +208,70 @@ exports.getInvoiceById = asyncHandler(async (req, res) => {
 
 // Update invoice
 exports.updateInvoice = asyncHandler(async (req, res) => {
-  const existing = await Invoice.findById(req.params.id).select("invoiceNo").lean();
-  if (!existing) return res.status(404).json({ message: "Invoice not found" });
+  const existing = await Invoice.findById(req.params.id)
+    .select("invoiceNo")
+    .lean();
 
-  // Only re-check when the number was actually changed (old data may already overlap).
-  if (req.body.invoiceNo && req.body.invoiceNo !== existing.invoiceNo) {
-    const conflict = await findSeqConflict(req.body.invoiceNo, req.params.id);
+  if (!existing) {
+    return res.status(404).json({
+      message: "Invoice not found",
+    });
+  }
+
+  const invoiceNo = String(
+    req.body.invoiceNo ?? existing.invoiceNo
+  ).trim();
+
+  // Invoice number change hua hai tab duplicate check
+  if (invoiceNo !== existing.invoiceNo) {
+    const conflict = await findSeqConflict(
+      invoiceNo,
+      req.params.id
+    );
+
     if (conflict) {
-      return res.status(409).json({ message: conflictMessage(req.body.invoiceNo, conflict) });
+      return res.status(409).json({
+        message: conflictMessage(invoiceNo, conflict),
+        code: "DUPLICATE_INVOICE_NUMBER",
+      });
     }
   }
 
-  const invoice = await Invoice.findByIdAndUpdate(req.params.id, withGrandTotal(req.body), {
-    new: true,
-    runValidators: true,
-  });
-  if (!invoice) return res.status(404).json({ message: "Invoice not found" });
+  try {
+    const invoice = await Invoice.findByIdAndUpdate(
+      req.params.id,
+      withGrandTotal({
+        ...req.body,
+        invoiceNo,
+      }),
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
 
-  if (invoice.invoiceNo !== existing.invoiceNo) bumpNumbering(invoice.invoiceNo);
+    if (!invoice) {
+      return res.status(404).json({
+        message: "Invoice not found",
+      });
+    }
 
-  res.json(invoice);
+    if (invoice.invoiceNo !== existing.invoiceNo) {
+      bumpNumbering(invoice.invoiceNo);
+    }
+
+    return res.json(invoice);
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        message: `Invoice number ${invoiceNo} is already used. Please use a different invoice number.`,
+        code: "DUPLICATE_INVOICE_NUMBER",
+      });
+    }
+
+    throw error;
+  }
 });
-
 // Delete invoice
 exports.deleteInvoice = asyncHandler(async (req, res) => {
   const invoice = await Invoice.findByIdAndDelete(req.params.id);
