@@ -127,21 +127,44 @@ const plainMoney = (n) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-
 function toExportRow(invoice, index) {
   return {
     sno: index + 1,
+
     invoiceNo: invoice.invoiceNo || "",
-    date: formatDate(invoice.invoiceDate || invoice.createdAt),
-    type: invoice.type === "dealer" ? "Dealer" : "Customer",
+
+    date: formatDate(
+      invoice.invoiceDate || invoice.createdAt
+    ),
+
+    type:
+      invoice.type === "dealer"
+        ? "Dealer"
+        : "Customer",
+
+    // Company GSTIN
+    gstNo: invoice.company?.gstin || "",
+
     billTo: invoice.billTo?.name || "",
+
     mobile: invoice.billTo?.mobile || "",
+
     shipTo: invoice.shipTo?.name || "",
-    transporter: invoice.transport?.transporter || "",
-    vehicleNo: invoice.transport?.vehicleNo || "",
-    driverName: invoice.transport?.driverName || "",
-    driverPhone: invoice.transport?.driverPhone || "",
-    amount: Number(invoice.grandTotal) || 0,
+
+    transporter:
+      invoice.transport?.transporter || "",
+
+    vehicleNo:
+      invoice.transport?.vehicleNo || "",
+
+    driverName:
+      invoice.transport?.driverName || "",
+
+    driverPhone:
+      invoice.transport?.driverPhone || "",
+
+    amount:
+      Number(invoice.grandTotal) || 0,
   };
 }
 
@@ -157,6 +180,7 @@ async function exportToExcel(rows) {
     "Invoice No.",
     "Date",
     "Type",
+    "GST No.",
     "Bill To",
     "Mobile",
     "Ship To",
@@ -169,13 +193,17 @@ async function exportToExcel(rows) {
 
   const AMOUNT_COL = header.length - 1;
 
-  const totalAmount = rows.reduce((sum, r) => sum + r.amount, 0);
+  const totalAmount = rows.reduce(
+    (sum, r) => sum + r.amount,
+    0
+  );
 
   const body = rows.map((r) => [
     r.sno,
     r.invoiceNo,
     r.date,
     r.type,
+    r.gstNo,
     r.billTo,
     r.mobile,
     r.shipTo,
@@ -187,29 +215,47 @@ async function exportToExcel(rows) {
   ]);
 
   const totalRow = header.map(() => "");
+
   totalRow[AMOUNT_COL - 1] = "Total";
+
   totalRow[AMOUNT_COL] = totalAmount;
 
-  const sheet = XLSX.utils.aoa_to_sheet([header, ...body, totalRow]);
+  const sheet = XLSX.utils.aoa_to_sheet([
+    header,
+    ...body,
+    totalRow,
+  ]);
 
   sheet["!cols"] = [
-    { wch: 7 },
-    { wch: 18 },
-    { wch: 14 },
-    { wch: 11 },
-    { wch: 26 },
-    { wch: 15 },
-    { wch: 26 },
-    { wch: 20 },
-    { wch: 14 },
-    { wch: 20 },
-    { wch: 15 },
-    { wch: 16 },
+    { wch: 7 },   // S.No.
+    { wch: 20 },  // Invoice No.
+    { wch: 14 },  // Date
+    { wch: 11 },  // Type
+    { wch: 20 },  // GST No.
+    { wch: 26 },  // Bill To
+    { wch: 15 },  // Mobile
+    { wch: 26 },  // Ship To
+    { wch: 20 },  // Transporter
+    { wch: 15 },  // Vehicle No.
+    { wch: 20 },  // Driver Name
+    { wch: 16 },  // Driver Phone
+    { wch: 16 },  // Amount
   ];
 
-  // Real numeric cells with Indian-style 2-decimal format
-  for (let r = 1; r <= rows.length + 1; r += 1) {
-    const cell = sheet[XLSX.utils.encode_cell({ r, c: AMOUNT_COL })];
+  // Amount column as real numeric value
+  // with Indian 2-decimal format
+  for (
+    let r = 1;
+    r <= rows.length + 1;
+    r += 1
+  ) {
+    const cell =
+      sheet[
+        XLSX.utils.encode_cell({
+          r,
+          c: AMOUNT_COL,
+        })
+      ];
 
     if (cell) {
       cell.t = "n";
@@ -217,13 +263,24 @@ async function exportToExcel(rows) {
     }
   }
 
-  sheet["!freeze"] = { xSplit: 0, ySplit: 1 };
+  // Freeze header row
+  sheet["!freeze"] = {
+    xSplit: 0,
+    ySplit: 1,
+  };
 
   const workbook = XLSX.utils.book_new();
 
-  XLSX.utils.book_append_sheet(workbook, sheet, "Invoices");
+  XLSX.utils.book_append_sheet(
+    workbook,
+    sheet,
+    "Invoices"
+  );
 
-  XLSX.writeFile(workbook, exportFileName("xlsx"));
+  XLSX.writeFile(
+    workbook,
+    exportFileName("xlsx")
+  );
 }
 
 async function exportToPdf(rows, filterText) {
@@ -236,23 +293,39 @@ async function exportToPdf(rows, filterText) {
     format: "a4",
   });
 
-  const totalAmount = rows.reduce((sum, r) => sum + r.amount, 0);
+  const totalAmount = rows.reduce(
+    (sum, r) => sum + r.amount,
+    0
+  );
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(15);
   doc.setTextColor(23, 32, 51);
-  doc.text("Saved Invoices", 40, 40);
+
+  doc.text(
+    "Saved Invoices",
+    40,
+    40
+  );
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(102, 112, 133);
+
   doc.text(
-    `Generated on ${new Date().toLocaleDateString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    })}  |  ${rows.length} invoice${rows.length === 1 ? "" : "s"}${
-      filterText ? `  |  ${filterText}` : ""
+    `Generated on ${new Date().toLocaleDateString(
+      "en-IN",
+      {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }
+    )}  |  ${rows.length} invoice${
+      rows.length === 1 ? "" : "s"
+    }${
+      filterText
+        ? `  |  ${filterText}`
+        : ""
     }`,
     40,
     56
@@ -260,8 +333,15 @@ async function exportToPdf(rows, filterText) {
 
   autoTable(doc, {
     startY: 70,
-    margin: { left: 40, right: 40, bottom: 36 },
+
+    margin: {
+      left: 40,
+      right: 40,
+      bottom: 36,
+    },
+
     theme: "grid",
+
     showFoot: "lastPage",
 
     head: [
@@ -270,6 +350,7 @@ async function exportToPdf(rows, filterText) {
         "Invoice No.",
         "Date",
         "Type",
+        "GST No.",
         "Bill To",
         "Mobile",
         "Vehicle No.",
@@ -282,6 +363,7 @@ async function exportToPdf(rows, filterText) {
       r.invoiceNo,
       r.date,
       r.type,
+      r.gstNo || "-",
       r.billTo || "-",
       r.mobile || "-",
       r.vehicleNo || "-",
@@ -292,16 +374,19 @@ async function exportToPdf(rows, filterText) {
       [
         {
           content: "Total",
-          colSpan: 7,
-          styles: { halign: "right" },
+          colSpan: 8,
+          styles: {
+            halign: "right",
+          },
         },
+
         plainMoney(totalAmount),
       ],
     ],
 
     styles: {
-      fontSize: 8.5,
-      cellPadding: 5,
+      fontSize: 8,
+      cellPadding: 4,
       lineColor: [225, 232, 240],
       lineWidth: 0.5,
       textColor: [23, 32, 51],
@@ -322,32 +407,79 @@ async function exportToPdf(rows, filterText) {
     },
 
     columnStyles: {
-      0: { halign: "center", cellWidth: 40 },
-      1: { cellWidth: 100, fontStyle: "bold" },
-      2: { cellWidth: 75 },
-      3: { cellWidth: 65 },
-      4: { cellWidth: "auto" },
-      5: { cellWidth: 85 },
-      6: { cellWidth: 85 },
-      7: { halign: "right", cellWidth: 90 },
+      0: {
+        halign: "center",
+        cellWidth: 38,
+      },
+
+      1: {
+        cellWidth: 105,
+        fontStyle: "bold",
+      },
+
+      2: {
+        cellWidth: 72,
+      },
+
+      3: {
+        cellWidth: 60,
+      },
+
+      4: {
+        cellWidth: 105,
+      },
+
+      5: {
+        cellWidth: "auto",
+      },
+
+      6: {
+        cellWidth: 78,
+      },
+
+      7: {
+        cellWidth: 78,
+      },
+
+      8: {
+        halign: "right",
+        cellWidth: 88,
+      },
     },
   });
 
-  const pages = doc.getNumberOfPages();
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
+  const pages =
+    doc.getNumberOfPages();
+
+  const pageWidth =
+    doc.internal.pageSize.getWidth();
+
+  const pageHeight =
+    doc.internal.pageSize.getHeight();
 
   doc.setFontSize(8);
   doc.setTextColor(102, 112, 133);
 
-  for (let i = 1; i <= pages; i += 1) {
+  for (
+    let i = 1;
+    i <= pages;
+    i += 1
+  ) {
     doc.setPage(i);
-    doc.text(`Page ${i} of ${pages}`, pageWidth - 40, pageHeight - 18, {
-      align: "right",
-    });
+
+    doc.text(
+      `Page ${i} of ${pages}`,
+      pageWidth - 40,
+      pageHeight - 18,
+      {
+        align: "right",
+      }
+    );
   }
 
-  doc.save(exportFileName("pdf"));
+  doc.save(
+    exportFileName("pdf")
+  );
 }
 
 export default function InvoiceList() {
