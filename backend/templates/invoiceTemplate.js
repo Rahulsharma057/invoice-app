@@ -21,9 +21,7 @@ function money(n) {
 
 function computeTotals(invoice) {
   const itemsWithAmount = (invoice.items || []).map((it) => {
-    const amount =
-      (Number(it.qty) || 0) *
-      (Number(it.rate) || 0);
+    const amount = (Number(it.qty) || 0) * (Number(it.rate) || 0);
 
     return {
       ...it,
@@ -31,8 +29,10 @@ function computeTotals(invoice) {
     };
   });
 
-  const totalBeforeTax = itemsWithAmount.reduce(
-    (s, it) => s + it.amount,
+  const totalBeforeTax = itemsWithAmount.reduce((s, it) => s + it.amount, 0);
+
+  const totalQty = itemsWithAmount.reduce(
+    (s, it) => s + (Number(it.qty) || 0),
     0
   );
 
@@ -40,31 +40,23 @@ function computeTotals(invoice) {
 
   const taxable = totalBeforeTax - discount;
 
-  const cgstPercent =
-    Number(invoice.cgstPercent) || 0;
+  const cgstPercent = Number(invoice.cgstPercent) || 0;
 
-  const sgstPercent =
-    Number(invoice.sgstPercent) || 0;
+  const sgstPercent = Number(invoice.sgstPercent) || 0;
 
-  const cgstAmount =
-    (taxable * cgstPercent) / 100;
+  const cgstAmount = (taxable * cgstPercent) / 100;
 
-  const sgstAmount =
-    (taxable * sgstPercent) / 100;
+  const sgstAmount = (taxable * sgstPercent) / 100;
 
-  const rawTotal =
-    taxable +
-    cgstAmount +
-    sgstAmount;
+  const rawTotal = taxable + cgstAmount + sgstAmount;
 
-  const roundedTotal =
-    Math.round(rawTotal);
+  const roundedTotal = Math.round(rawTotal);
 
-  const roundOff =
-    roundedTotal - rawTotal;
+  const roundOff = roundedTotal - rawTotal;
 
   return {
     itemsWithAmount,
+    totalQty,
     totalBeforeTax,
     discount,
     taxable,
@@ -83,21 +75,13 @@ function computeTotals(invoice) {
 function renderParty(title, party = {}, type) {
   const idLine =
     type === "dealer"
-      ? `<div><b>Dealer Code:</b> ${esc(
-          party.dealerCode
-        )}</div>`
-      : `<div><b>Aadhar Number:</b> ${esc(
-          party.aadhar
-        )}</div>`;
+      ? `<div><b>Dealer Code:</b> ${esc(party.dealerCode)}</div>`
+      : `<div><b>Aadhar Number:</b> ${esc(party.aadhar)}</div>`;
 
   const taxLine =
     type === "dealer"
-      ? `<div><b>GSTIN:</b> ${esc(
-          party.gstin
-        )}</div>`
-      : `<div><b>PAN Number:</b> ${esc(
-          party.pan
-        )}</div>`;
+      ? `<div><b>GSTIN:</b> ${esc(party.gstin)}</div>`
+      : `<div><b>PAN Number:</b> ${esc(party.pan)}</div>`;
 
   return `
     <div class="box party-box">
@@ -130,10 +114,22 @@ function renderParty(title, party = {}, type) {
 function renderCopy(invoice, copyLabel) {
   const t = computeTotals(invoice);
 
-  const type =
-    invoice.type === "dealer"
-      ? "dealer"
-      : "customer";
+  const type = invoice.type === "dealer" ? "dealer" : "customer";
+
+  // Total qty shown without trailing zeros (e.g. 12 or 12.5)
+  const totalQtyText = (Number(t.totalQty) || 0).toLocaleString("en-IN", {
+    maximumFractionDigits: 2,
+  });
+
+  // Show the unit next to total qty only when every item uses the same unit
+  const units = [
+    ...new Set(
+      t.itemsWithAmount
+        .map((it) => String(it.unit || "").trim())
+        .filter(Boolean)
+    ),
+  ];
+  const commonUnit = units.length === 1 ? units[0] : "";
 
   const rows = t.itemsWithAmount
     .map(
@@ -176,15 +172,10 @@ function renderCopy(invoice, copyLabel) {
     .join("");
 
   const termsList = (invoice.terms || [])
-    .map(
-      (term) =>
-        `<li>${esc(term)}</li>`
-    )
+    .map((term) => `<li>${esc(term)}</li>`)
     .join("");
 
-  const logoSrc =
-    invoice.company?.logo ||
-    defaultLogo;
+  const logoSrc = invoice.company?.logo || defaultLogo;
 
   return `
   <section class="page">
@@ -194,104 +185,93 @@ function renderCopy(invoice, copyLabel) {
     </div>
 
     <!-- HEADER -->
- <div class="header">
+    <div class="header">
 
-  <div class="company">
+      <div class="company">
 
-    <img
-      class="logo"
-      src="${logoSrc}"
-      alt="logo"
-    />
+        <img
+          class="logo"
+          src="${logoSrc}"
+          alt="logo"
+        />
 
-    <div class="company-text">
+        <div class="company-text">
 
-      <div class="company-name">
-        ${
-          esc(invoice.company?.name) ||
-          "COMPANY NAME"
-        }
+          <div class="company-name">
+            ${esc(invoice.company?.name) || "COMPANY NAME"}
+          </div>
+
+          <div class="company-line company-address">
+            ${esc(invoice.company?.address)}
+          </div>
+
+          <div class="company-line">
+            ${
+              invoice.company?.gstin
+                ? `<b>GSTIN:</b> ${esc(invoice.company.gstin)}`
+                : ""
+            }
+
+            ${
+              invoice.company?.phone
+                ? ` <span class="separator">|</span> <b>Ph.:</b> ${esc(invoice.company.phone)}`
+                : ""
+            }
+          </div>
+
+          <div class="company-line">
+            ${
+              invoice.company?.email
+                ? `<b>Email:</b> ${esc(invoice.company.email)}`
+                : ""
+            }
+
+            ${
+              invoice.company?.website
+                ? ` <span class="separator">|</span> ${esc(invoice.company.website)}`
+                : ""
+            }
+          </div>
+
+        </div>
       </div>
 
-      <div class="company-line company-address">
-        ${esc(invoice.company?.address)}
-      </div>
 
-      <div class="company-line">
-        ${
-          invoice.company?.gstin
-            ? `<b>GSTIN:</b> ${esc(invoice.company.gstin)}`
-            : ""
-        }
+      <div class="invoice-badge">
 
-        ${
-          invoice.company?.phone
-            ? ` <span class="separator">|</span> <b>Ph.:</b> ${esc(invoice.company.phone)}`
-            : ""
-        }
-      </div>
+        <div class="badge">
+          INVOICE
+        </div>
 
-      <div class="company-line">
-        ${
-          invoice.company?.email
-            ? `<b>Email:</b> ${esc(invoice.company.email)}`
-            : ""
-        }
+        <table class="meta">
 
-        ${
-          invoice.company?.website
-            ? ` <span class="separator">|</span> ${esc(invoice.company.website)}`
-            : ""
-        }
+          <tr>
+            <td>Invoice No.</td>
+            <td>${esc(invoice.invoiceNo)}</td>
+          </tr>
+
+          <tr>
+            <td>Invoice Date</td>
+            <td>${esc(invoice.invoiceDate)}</td>
+          </tr>
+
+          <tr>
+            <td>Place Supply</td>
+            <td>${esc(invoice.placeOfSupply)}</td>
+          </tr>
+
+        </table>
+
       </div>
 
     </div>
-  </div>
-
-
-  <div class="invoice-badge">
-
-    <div class="badge">
-      INVOICE
-    </div>
-
-    <table class="meta">
-
-      <tr>
-        <td>Invoice No.</td>
-        <td>${esc(invoice.invoiceNo)}</td>
-      </tr>
-
-      <tr>
-        <td>Invoice Date</td>
-        <td>${esc(invoice.invoiceDate)}</td>
-      </tr>
-
-      <tr>
-        <td>Place Supply</td>
-        <td>${esc(invoice.placeOfSupply)}</td>
-      </tr>
-
-    </table>
-
-  </div>
-
-</div>
 
     <!-- BILL / SHIP / TRANSPORT -->
     <div class="three-col">
 
-      ${renderParty(
-        "BILL TO",
-        invoice.billTo,
-        type
-      )}
+      ${renderParty("BILL TO", invoice.billTo, type)}
 
-      ${renderParty(
-        "SHIP TO",
-        invoice.shipTo,
-        type
-      )}
+      ${renderParty("SHIP TO", invoice.shipTo, type)}
 
       <div class="box transport-box">
 
@@ -301,41 +281,37 @@ function renderCopy(invoice, copyLabel) {
 
         <div>
           <b>Transporter:</b>
-          ${esc(
-            invoice.transport?.transporter
-          )}
+          ${esc(invoice.transport?.transporter)}
         </div>
 
         <div>
           <b>LR No.:</b>
-          ${esc(
-            invoice.transport?.lrNo
-          )}
+          ${esc(invoice.transport?.lrNo)}
         </div>
 
         <div>
           <b>LR Date:</b>
-          ${esc(
-            invoice.transport?.lrDate
-          )}
+          ${esc(invoice.transport?.lrDate)}
         </div>
 
         <div>
           <b>Vehicle No.:</b>
-          ${
-            esc(
-              invoice.transport?.vehicleNo
-            ) || "-"
-          }
+          ${esc(invoice.transport?.vehicleNo) || "-"}
         </div>
 
         <div>
           <b>E-Way Bill:</b>
-          ${
-            esc(
-              invoice.transport?.ewayBill
-            ) || "-"
-          }
+          ${esc(invoice.transport?.ewayBill) || "-"}
+        </div>
+
+        <div>
+          <b>Driver Name:</b>
+          ${esc(invoice.transport?.driverName) || "-"}
+        </div>
+
+        <div>
+          <b>Driver Ph. No.:</b>
+          ${esc(invoice.transport?.driverPhone) || "-"}
         </div>
 
       </div>
@@ -347,39 +323,14 @@ function renderCopy(invoice, copyLabel) {
 
       <thead>
         <tr>
-
-          <th>
-            S.No.
-          </th>
-
-          <th>
-            Product Description
-          </th>
-
-          <th>
-            Size
-          </th>
-
-          <th>
-            HSN Code
-          </th>
-
-          <th>
-            Qty.
-          </th>
-
-          <th>
-            Unit
-          </th>
-
-          <th>
-            Rate (Rs.)
-          </th>
-
-          <th>
-            Amount (Rs.)
-          </th>
-
+          <th>S.No.</th>
+          <th>Product Description</th>
+          <th>Size</th>
+          <th>HSN Code</th>
+          <th>Qty.</th>
+          <th>Unit</th>
+          <th>Rate (Rs.)</th>
+          <th>Amount (Rs.)</th>
         </tr>
       </thead>
 
@@ -389,10 +340,7 @@ function renderCopy(invoice, copyLabel) {
           rows ||
           `
           <tr>
-            <td
-              colspan="8"
-              class="center"
-            >
+            <td colspan="8" class="center">
               No items
             </td>
           </tr>
@@ -400,6 +348,16 @@ function renderCopy(invoice, copyLabel) {
         }
 
       </tbody>
+
+      <tfoot>
+        <tr class="items-total">
+          <td colspan="4" class="right">Total</td>
+          <td class="center">${totalQtyText}</td>
+          <td class="center">${esc(commonUnit)}</td>
+          <td></td>
+          <td class="right">Rs. ${money(t.totalBeforeTax)}</td>
+        </tr>
+      </tfoot>
 
     </table>
 
@@ -412,9 +370,7 @@ function renderCopy(invoice, copyLabel) {
         <div class="amount-words">
 
           <div>
-            <b>
-              Amount Chargeable (in words):
-            </b>
+            <b>Amount Chargeable (in words):</b>
           </div>
 
           <div>
@@ -431,47 +387,27 @@ function renderCopy(invoice, copyLabel) {
 
           <div>
             Bank Name:
-            <b>
-              ${esc(
-                invoice.bank?.bankName
-              )}
-            </b>
+            <b>${esc(invoice.bank?.bankName)}</b>
           </div>
 
           <div>
             A/c Name:
-            <b>
-              ${esc(
-                invoice.bank?.accountName
-              )}
-            </b>
+            <b>${esc(invoice.bank?.accountName)}</b>
           </div>
 
           <div>
             A/c No.:
-            <b>
-              ${esc(
-                invoice.bank?.accountNo
-              )}
-            </b>
+            <b>${esc(invoice.bank?.accountNo)}</b>
           </div>
 
           <div>
             IFSC Code:
-            <b>
-              ${esc(
-                invoice.bank?.ifsc
-              )}
-            </b>
+            <b>${esc(invoice.bank?.ifsc)}</b>
           </div>
 
           <div>
             Branch:
-            <b>
-              ${esc(
-                invoice.bank?.branch
-              )}
-            </b>
+            <b>${esc(invoice.bank?.branch)}</b>
           </div>
 
         </div>
@@ -484,103 +420,48 @@ function renderCopy(invoice, copyLabel) {
         <table class="totals">
 
           <tr>
-            <td>
-              Total Amount Before Tax
-            </td>
-
-            <td class="right">
-              Rs.
-              ${money(
-                t.totalBeforeTax
-              )}
-            </td>
+            <td>Total Amount Before Tax</td>
+            <td class="right">Rs. ${money(t.totalBeforeTax)}</td>
           </tr>
 
           <tr>
-            <td>
-              Discount
-            </td>
-
-            <td class="right">
-              ${money(t.discount)}
-            </td>
+            <td>Discount</td>
+            <td class="right">${money(t.discount)}</td>
           </tr>
 
           <tr>
-            <td>
-              Taxable Amount
-            </td>
-
-            <td class="right">
-              Rs.
-              ${money(t.taxable)}
-            </td>
+            <td>Taxable Amount</td>
+            <td class="right">Rs. ${money(t.taxable)}</td>
           </tr>
 
           <tr>
-            <td>
-              CGST (%)
-            </td>
-
-            <td class="right">
-              ${t.cgstPercent}
-            </td>
+            <td>CGST (%)</td>
+            <td class="right">${t.cgstPercent}</td>
           </tr>
 
           <tr>
-            <td>
-              CGST Amount
-            </td>
-
-            <td class="right">
-              Rs.
-              ${money(t.cgstAmount)}
-            </td>
+            <td>CGST Amount</td>
+            <td class="right">Rs. ${money(t.cgstAmount)}</td>
           </tr>
 
           <tr>
-            <td>
-              SGST (%)
-            </td>
-
-            <td class="right">
-              ${t.sgstPercent}
-            </td>
+            <td>SGST (%)</td>
+            <td class="right">${t.sgstPercent}</td>
           </tr>
 
           <tr>
-            <td>
-              SGST Amount
-            </td>
-
-            <td class="right">
-              Rs.
-              ${money(t.sgstAmount)}
-            </td>
+            <td>SGST Amount</td>
+            <td class="right">Rs. ${money(t.sgstAmount)}</td>
           </tr>
 
           <tr>
-            <td>
-              Round Off
-            </td>
-
-            <td class="right">
-              Rs.
-              ${money(t.roundOff)}
-            </td>
+            <td>Round Off</td>
+            <td class="right">Rs. ${money(t.roundOff)}</td>
           </tr>
 
           <tr class="grand">
-
-            <td>
-              Total Invoice Amount
-            </td>
-
-            <td class="right">
-              Rs.
-              ${money(t.grandTotal)}
-            </td>
-
+            <td>Total Invoice Amount</td>
+            <td class="right">Rs. ${money(t.grandTotal)}</td>
           </tr>
 
         </table>
@@ -605,14 +486,6 @@ function renderCopy(invoice, copyLabel) {
     <!-- STAMP / SIGNATURE -->
     <div class="stamp-sign-row">
 
-      <div class="stamp-box">
-
-        <div class="stamp-label">
-          Company Seal / Mohar
-        </div>
-
-      </div>
-
       <div class="signature">
 
         <div class="sign-space"></div>
@@ -623,12 +496,7 @@ function renderCopy(invoice, copyLabel) {
 
         <div>
           <b>
-            For
-            ${
-              esc(
-                invoice.company?.name
-              ) || "COMPANY NAME"
-            }
+            For ${esc(invoice.company?.name) || "COMPANY NAME"}
           </b>
         </div>
 
@@ -653,9 +521,7 @@ function buildInvoiceHtml(invoice) {
     "TRIPLICATE FOR ASSESSEE",
   ];
 
-  const pages = copies
-    .map((c) => renderCopy(invoice, c))
-    .join("\n");
+  const pages = copies.map((c) => renderCopy(invoice, c)).join("\n");
 
   return `<!DOCTYPE html>
 
@@ -748,187 +614,169 @@ function buildInvoiceHtml(invoice) {
     HEADER
   */
 
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
 
-  gap: 10px;
+    gap: 10px;
 
-  width: 100%;
-  min-width: 0;
+    width: 100%;
+    min-width: 0;
 
-  border-bottom: 2px solid #0b5d3b;
+    border-bottom: 2px solid #0b5d3b;
 
-  padding-bottom: 7px;
-  margin-bottom: 10px;
-}
+    padding-bottom: 7px;
+    margin-bottom: 10px;
+  }
 
+  /* LEFT COMPANY */
 
-/* LEFT COMPANY */
+  .company {
+    display: flex;
+    gap: 9px;
 
-.company {
-  display: flex;
-  gap: 9px;
+    align-items: flex-start;
 
-  align-items: flex-start;
+    flex: 1 1 auto;
+    min-width: 0;
 
-  flex: 1 1 auto;
-  min-width: 0;
+    max-width: calc(100% - 128px);
+  }
 
-  max-width: calc(100% - 128px);
-}
+  .logo {
+    width: 52px;
+    height: 52px;
 
+    object-fit: contain;
 
-.logo {
-  width: 52px;
-  height: 52px;
+    flex: 0 0 52px;
+  }
 
-  object-fit: contain;
+  .company-text {
+    min-width: 0;
 
-  flex: 0 0 52px;
-}
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
 
+  .company-name {
+    font-family: "Times New Roman", Times, serif;
 
-.company-text {
-  min-width: 0;
+    font-size: 18px;
+    font-weight: bold;
 
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
+    color: #0b5d3b;
 
+    line-height: 1.1;
 
-.company-name {
-  font-family:
-    "Times New Roman",
-    Times,
-    serif;
+    margin-bottom: 2px;
+  }
 
-  font-size: 18px;
-  font-weight: bold;
+  .company-line {
+    font-size: 9.5px;
 
-  color: #0b5d3b;
+    margin-top: 1.5px;
 
-  line-height: 1.1;
+    line-height: 1.2;
 
-  margin-bottom: 2px;
-}
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
 
+  .company-address {
+    max-width: 100%;
+  }
 
-.company-line {
-  font-size: 9.5px;
+  .separator {
+    color: #777;
+    margin: 0 2px;
+  }
 
-  margin-top: 1.5px;
+  /* RIGHT INVOICE */
 
-  line-height: 1.2;
+  .invoice-badge {
+    text-align: right;
 
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
+    flex: 0 0 128px;
 
+    width: 128px;
+    min-width: 128px;
 
-.company-address {
-  max-width: 100%;
-}
+    padding-top: 1px;
+  }
 
+  /* SMALLER INVOICE BUTTON */
 
-.separator {
-  color: #777;
-  margin: 0 2px;
-}
+  .badge {
+    font-family: "Times New Roman", Times, serif;
 
+    background: #0b5d3b;
 
-/* RIGHT INVOICE */
+    color: #fff;
 
-.invoice-badge {
-  text-align: right;
+    font-weight: bold;
 
-  flex: 0 0 128px;
+    font-size: 14px;
 
-  width: 128px;
-  min-width: 128px;
+    padding: 4px 14px;
 
-  padding-top: 1px;
-}
+    border-radius: 3px;
 
+    display: inline-block;
 
-/* SMALLER INVOICE BUTTON */
+    margin-bottom: 4px;
 
-.badge {
-  font-family:
-    "Times New Roman",
-    Times,
-    serif;
+    white-space: nowrap;
+  }
 
-  background: #0b5d3b;
+  /* META TABLE */
 
-  color: #fff;
+  .meta {
+    width: 100%;
 
-  font-weight: bold;
+    border-collapse: collapse;
 
-  font-size: 14px;
+    table-layout: fixed;
+  }
 
-  padding: 4px 14px;
+  .meta td {
+    font-size: 9.5px;
 
-  border-radius: 3px;
+    padding: 1px 0;
 
-  display: inline-block;
+    vertical-align: middle;
 
-  margin-bottom: 4px;
+    line-height: 1.15;
 
-  white-space: nowrap;
-}
+    overflow-wrap: normal;
+    word-break: normal;
+  }
 
+  .meta td:first-child {
+    color: #555;
 
-/* META TABLE */
+    text-align: right;
 
-.meta {
-  width: 100%;
+    padding-right: 6px;
 
-  border-collapse: collapse;
+    width: 48%;
 
-  table-layout: fixed;
-}
+    white-space: nowrap;
+  }
 
+  .meta td:last-child {
+    text-align: left;
 
-.meta td {
-  font-size: 9.5px;
+    font-weight: 600;
 
-  padding: 1px 0;
+    width: 52%;
 
-  vertical-align: middle;
+    white-space: nowrap;
 
-  line-height: 1.15;
+    overflow: visible;
+  }
 
-  overflow-wrap: normal;
-  word-break: normal;
-}
-
-
-.meta td:first-child {
-  color: #555;
-
-  text-align: right;
-
-  padding-right: 6px;
-
-  width: 48%;
-
-  white-space: nowrap;
-}
-
-
-.meta td:last-child {
-  text-align: left;
-
-  font-weight: 600;
-
-  width: 52%;
-
-  white-space: nowrap;
-
-  overflow: visible;
-}
   /*
     BILL / SHIP / TRANSPORT
   */
@@ -1001,15 +849,31 @@ function buildInvoiceHtml(invoice) {
 
     color: #fff;
 
-    padding: 6px;
+    padding: 8px 4px;
 
-    text-align: left;
+    text-align: center;
 
     font-weight: bold;
 
+    font-size: 10.5px;
+
     vertical-align: middle;
 
-    line-height: 1.2;
+    line-height: 1.25;
+
+    border: 1px solid #0b5d3b;
+
+    border-left-color: rgba(255, 255, 255, 0.35);
+
+    white-space: normal;
+
+    overflow-wrap: normal;
+
+    word-break: normal;
+  }
+
+  table.items th:first-child {
+    border-left-color: #0b5d3b;
   }
 
   table.items td {
@@ -1036,12 +900,12 @@ function buildInvoiceHtml(invoice) {
 
   table.items th:nth-child(2),
   table.items td:nth-child(2) {
-    width: 25%;
+    width: 24%;
   }
 
   table.items th:nth-child(3),
   table.items td:nth-child(3) {
-    width: 9%;
+    width: 14%;
   }
 
   table.items th:nth-child(4),
@@ -1061,12 +925,34 @@ function buildInvoiceHtml(invoice) {
 
   table.items th:nth-child(7),
   table.items td:nth-child(7) {
-    width: 15%;
+    width: 12%;
   }
 
   table.items th:nth-child(8),
   table.items td:nth-child(8) {
-    width: 17%;
+    width: 16%;
+  }
+
+  /*
+    ITEMS TOTAL ROW
+  */
+
+  table.items tfoot {
+    display: table-row-group;
+  }
+
+  table.items tfoot td {
+    background: #eaf5ef;
+
+    color: #0b5d3b;
+
+    font-weight: bold;
+
+    border: 1px solid #ddd;
+
+    border-top: 2px solid #0b5d3b;
+
+    padding: 7px 6px;
   }
 
   /*
@@ -1162,10 +1048,7 @@ function buildInvoiceHtml(invoice) {
 
     font-size: 11px;
 
-    font-family:
-      "Times New Roman",
-      Times,
-      serif;
+    font-family: "Times New Roman", Times, serif;
 
     table-layout: fixed;
   }
@@ -1212,11 +1095,7 @@ function buildInvoiceHtml(invoice) {
 
     border-radius: 4px;
 
-    padding:
-      8px
-      8px
-      8px
-      20px;
+    padding: 8px 8px 8px 20px;
 
     margin-bottom: 0;
 
@@ -1243,47 +1122,13 @@ function buildInvoiceHtml(invoice) {
   .stamp-sign-row {
     display: flex;
 
-    justify-content: space-between;
+    justify-content: flex-end;
 
     align-items: flex-end;
 
     width: 100%;
 
     margin-top: 26px;
-
-    gap: 20px;
-  }
-
-  .stamp-box {
-    width: 150px;
-
-    height: 90px;
-
-    border: 1px dashed #bbb;
-
-    border-radius: 4px;
-
-    display: flex;
-
-    align-items: flex-end;
-
-    justify-content: center;
-
-    padding-bottom: 6px;
-
-    flex-shrink: 0;
-  }
-
-  .stamp-label {
-    font-size: 9px;
-
-    color: #aaa;
-
-    text-transform: uppercase;
-
-    letter-spacing: 0.5px;
-
-    text-align: center;
   }
 
   .signature {

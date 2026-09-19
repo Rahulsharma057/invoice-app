@@ -15,10 +15,13 @@
     "@mui/material": "^5.16.4",
     "@tanstack/react-query": "^5.51.1",
     "axios": "^1.7.2",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "next": "14.2.5",
     "notistack": "^3.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "use-debounce": "^10.0.3"
+    "use-debounce": "^10.0.3",
+    "xlsx": "^0.18.5"
   }
 }

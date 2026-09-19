@@ -60,6 +60,8 @@ const InvoiceSchema = new mongoose.Schema(
       lrDate: { type: String, default: "" },
       vehicleNo: { type: String, default: "" },
       ewayBill: { type: String, default: "" },
+      driverName: { type: String, default: "" },
+      driverPhone: { type: String, default: "" },
     },
 
     items: { type: [ItemSchema], default: [] },

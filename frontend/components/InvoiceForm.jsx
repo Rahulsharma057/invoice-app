@@ -1,23 +1,12 @@
 "use client";
 
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { useSnackbar } from "notistack";
 
-import {
-  useSearchParams,
-  useRouter,
-} from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 
 import {
   Paper,
@@ -38,10 +27,7 @@ import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import SaveIcon from "@mui/icons-material/Save";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 
-import {
-  SectionCard,
-  Field,
-} from "./FormUI";
+import { SectionCard, Field } from "./FormUI";
 
 import PartyFields from "./PartyFields";
 import InvoiceTypeTabs from "./InvoiceTypeTabs";
@@ -79,37 +65,27 @@ const emptyItem = () => ({
   rate: 0,
 });
 
-function buildInitialForm(
-  config,
-  invoiceNo,
-  type
-) {
+// Keeps only characters valid in a phone number (digits, +, space, hyphen).
+const sanitizePhone = (value) => String(value || "").replace(/[^\d+\s-]/g, "");
+
+function buildInitialForm(config, invoiceNo, type) {
   return {
     type,
 
     invoiceNo: invoiceNo || "",
 
-    invoiceDate: new Date()
-      .toISOString()
-      .slice(0, 10),
+    invoiceDate: new Date().toISOString().slice(0, 10),
 
-    placeOfSupply:
-      config?.defaults?.placeOfSupply ||
-      "UTTAR PRADESH",
+    placeOfSupply: config?.defaults?.placeOfSupply || "UTTAR PRADESH",
 
     company: {
       name: config?.company?.name || "",
-      address:
-        config?.company?.address || "",
+      address: config?.company?.address || "",
       gstin: config?.company?.gstin || "",
-      phone:
-        config?.company?.phone || "",
-      email:
-        config?.company?.email || "",
-      website:
-        config?.company?.website || "",
-      logo:
-        config?.company?.logo || "",
+      phone: config?.company?.phone || "",
+      email: config?.company?.email || "",
+      website: config?.company?.website || "",
+      logo: config?.company?.logo || "",
     },
 
     billTo: emptyParty(),
@@ -122,93 +98,62 @@ function buildInitialForm(
       lrDate: "",
       vehicleNo: "",
       ewayBill: "",
+      driverName: "",
+      driverPhone: "",
     },
 
     items: [emptyItem()],
 
     discount: 0,
 
-    cgstPercent:
-      config?.defaults?.cgstPercent ?? 9,
+    cgstPercent: config?.defaults?.cgstPercent ?? 9,
 
-    sgstPercent:
-      config?.defaults?.sgstPercent ?? 9,
+    sgstPercent: config?.defaults?.sgstPercent ?? 9,
 
     bank: {
-      bankName:
-        config?.bank?.bankName || "",
-      accountName:
-        config?.bank?.accountName || "",
-      accountNo:
-        config?.bank?.accountNo || "",
-      ifsc:
-        config?.bank?.ifsc || "",
-      branch:
-        config?.bank?.branch || "",
+      bankName: config?.bank?.bankName || "",
+      accountName: config?.bank?.accountName || "",
+      accountNo: config?.bank?.accountNo || "",
+      ifsc: config?.bank?.ifsc || "",
+      branch: config?.bank?.branch || "",
     },
 
-    terms:
-      config?.defaults?.terms?.length
-        ? [...config.defaults.terms]
-        : [""],
+    terms: config?.defaults?.terms?.length ? [...config.defaults.terms] : [""],
   };
 }
 
 export default function InvoiceForm() {
-  const { enqueueSnackbar } =
-    useSnackbar();
+  const { enqueueSnackbar } = useSnackbar();
 
-  const queryClient =
-    useQueryClient();
+  const queryClient = useQueryClient();
 
-  const searchParams =
-    useSearchParams();
+  const searchParams = useSearchParams();
 
   const router = useRouter();
 
-  const editId =
-    searchParams.get("edit");
+  const editId = searchParams.get("edit");
 
-  const isEditMode =
-    Boolean(editId);
+  const isEditMode = Boolean(editId);
 
-  const [type, setType] =
-    useState("customer");
+  const [type, setType] = useState("customer");
 
-  const [form, setForm] =
-    useState(null);
+  const [form, setForm] = useState(null);
 
-  const [copySame, setCopySame] =
-    useState(true);
+  const [copySame, setCopySame] = useState(true);
 
-  const [
-    invoiceNoTouched,
-    setInvoiceNoTouched,
-  ] = useState(false);
+  const [invoiceNoTouched, setInvoiceNoTouched] = useState(false);
 
-  const [
-    previewOpen,
-    setPreviewOpen,
-  ] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
-  const [
-    previewUrl,
-    setPreviewUrl,
-  ] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
 
-  const [
-    editLoading,
-    setEditLoading,
-  ] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
 
   // ============================
   // CONFIG
   // ============================
 
-  const {
-    data: config,
-    isLoading: configLoading,
-  } = useQuery({
+  const { data: config, isLoading: configLoading } = useQuery({
     queryKey: queryKeys.config(),
     queryFn: getConfig,
   });
@@ -217,17 +162,12 @@ export default function InvoiceForm() {
   // NEXT INVOICE NUMBER
   // ============================
 
-  const {
-    data: nextNumberData,
-  } = useQuery({
-    queryKey:
-      queryKeys.nextInvoiceNumber(type),
+  const { data: nextNumberData } = useQuery({
+    queryKey: queryKeys.nextInvoiceNumber(type),
 
-    queryFn: () =>
-      getNextInvoiceNumber(type),
+    queryFn: () => getNextInvoiceNumber(type),
 
-    enabled:
-      !!config && !isEditMode,
+    enabled: !!config && !isEditMode,
   });
 
   // ============================
@@ -235,40 +175,19 @@ export default function InvoiceForm() {
   // ============================
 
   useEffect(() => {
-    if (
-      !config ||
-      form ||
-      isEditMode
-    ) {
+    if (!config || form || isEditMode) {
       return;
     }
 
-    setForm(
-      buildInitialForm(
-        config,
-        nextNumberData?.invoiceNo,
-        type
-      )
-    );
-  }, [
-    config,
-    form,
-    isEditMode,
-    nextNumberData,
-    type,
-  ]);
+    setForm(buildInitialForm(config, nextNumberData?.invoiceNo, type));
+  }, [config, form, isEditMode, nextNumberData, type]);
 
   // ============================
   // AUTO NEXT NUMBER
   // ============================
 
   useEffect(() => {
-    if (
-      isEditMode ||
-      !form ||
-      !nextNumberData?.invoiceNo ||
-      invoiceNoTouched
-    ) {
+    if (isEditMode || !form || !nextNumberData?.invoiceNo || invoiceNoTouched) {
       return;
     }
 
@@ -276,16 +195,11 @@ export default function InvoiceForm() {
       current
         ? {
             ...current,
-            invoiceNo:
-              nextNumberData.invoiceNo,
+            invoiceNo: nextNumberData.invoiceNo,
           }
         : current
     );
-  }, [
-    nextNumberData,
-    invoiceNoTouched,
-    isEditMode,
-  ]);
+  }, [nextNumberData, invoiceNoTouched, isEditMode]);
 
   // ============================
   // LOAD EXISTING INVOICE
@@ -302,34 +216,23 @@ export default function InvoiceForm() {
       try {
         setEditLoading(true);
 
-        const invoice =
-          await getInvoice(editId);
+        const invoice = await getInvoice(editId);
 
         if (cancelled) {
           return;
         }
 
-        const invoiceType =
-          invoice.type || "customer";
+        const invoiceType = invoice.type || "customer";
 
-        const defaults =
-          buildInitialForm(
-            config,
-            invoice.invoiceNo,
-            invoiceType
-          );
+        const defaults = buildInitialForm(config, invoice.invoiceNo, invoiceType);
 
         setType(invoiceType);
 
         setInvoiceNoTouched(true);
 
         setCopySame(
-          JSON.stringify(
-            invoice.billTo || {}
-          ) ===
-            JSON.stringify(
-              invoice.shipTo || {}
-            )
+          JSON.stringify(invoice.billTo || {}) ===
+            JSON.stringify(invoice.shipTo || {})
         );
 
         setForm({
@@ -352,6 +255,7 @@ export default function InvoiceForm() {
             ...(invoice.shipTo || {}),
           },
 
+          // Older invoices have no driver fields; defaults fill them with "".
           transport: {
             ...defaults.transport,
             ...(invoice.transport || {}),
@@ -363,24 +267,19 @@ export default function InvoiceForm() {
           },
 
           items:
-            Array.isArray(invoice.items) &&
-            invoice.items.length
+            Array.isArray(invoice.items) && invoice.items.length
               ? invoice.items
               : [emptyItem()],
 
           terms:
-            Array.isArray(invoice.terms) &&
-            invoice.terms.length
+            Array.isArray(invoice.terms) && invoice.terms.length
               ? invoice.terms
               : [""],
         });
       } catch (err) {
-        enqueueSnackbar(
-          `Failed to load invoice: ${err.message}`,
-          {
-            variant: "error",
-          }
-        );
+        enqueueSnackbar(`Failed to load invoice: ${err.message}`, {
+          variant: "error",
+        });
 
         router.push("/invoices");
       } finally {
@@ -395,20 +294,13 @@ export default function InvoiceForm() {
     return () => {
       cancelled = true;
     };
-  }, [
-    config,
-    editId,
-    enqueueSnackbar,
-    router,
-  ]);
+  }, [config, editId, enqueueSnackbar, router]);
 
   // ============================
   // TYPE
   // ============================
 
-  const handleTypeChange = (
-    newType
-  ) => {
+  const handleTypeChange = (newType) => {
     setType(newType);
 
     setInvoiceNoTouched(false);
@@ -427,11 +319,7 @@ export default function InvoiceForm() {
   // NESTED STATE
   // ============================
 
-  const setNested = (
-    section,
-    field,
-    value
-  ) => {
+  const setNested = (section, field, value) => {
     setForm((current) => ({
       ...current,
 
@@ -446,9 +334,7 @@ export default function InvoiceForm() {
   // BILL / SHIP
   // ============================
 
-  const handleCopySameToggle = (
-    checked
-  ) => {
+  const handleCopySameToggle = (checked) => {
     setCopySame(checked);
 
     if (checked) {
@@ -462,10 +348,7 @@ export default function InvoiceForm() {
     }
   };
 
-  const setBillToField = (
-    field,
-    value
-  ) => {
+  const setBillToField = (field, value) => {
     setForm((current) => {
       const nextBillTo = {
         ...current.billTo,
@@ -477,22 +360,13 @@ export default function InvoiceForm() {
 
         billTo: nextBillTo,
 
-        shipTo: copySame
-          ? { ...nextBillTo }
-          : current.shipTo,
+        shipTo: copySame ? { ...nextBillTo } : current.shipTo,
       };
     });
   };
 
-  const setShipToField = (
-    field,
-    value
-  ) => {
-    setNested(
-      "shipTo",
-      field,
-      value
-    );
+  const setShipToField = (field, value) => {
+    setNested("shipTo", field, value);
   };
 
   // ============================
@@ -510,174 +384,121 @@ export default function InvoiceForm() {
   // LOGO
   // ============================
 
-  const handleLogoUpload = (
-    event
-  ) => {
-    const file =
-      event.target.files?.[0];
+  const handleLogoUpload = (event) => {
+    const file = event.target.files?.[0];
 
     if (!file) {
       return;
     }
 
-    if (
-      file.size >
-      2 * 1024 * 1024
-    ) {
-      enqueueSnackbar(
-        "Logo image should be under 2MB",
-        {
-          variant: "warning",
-        }
-      );
+    if (file.size > 2 * 1024 * 1024) {
+      enqueueSnackbar("Logo image should be under 2MB", {
+        variant: "warning",
+      });
 
       return;
     }
 
-    const reader =
-      new FileReader();
+    const reader = new FileReader();
 
-    reader.onload = () =>
-      setNested(
-        "company",
-        "logo",
-        reader.result
-      );
+    reader.onload = () => setNested("company", "logo", reader.result);
 
     reader.readAsDataURL(file);
   };
 
-  const effectiveLogo = () =>
-    form?.company?.logo ||
-    "/logo.jpg";
+  const effectiveLogo = () => form?.company?.logo || "/logo.jpg";
 
   // ============================
   // SAVE / UPDATE
   // ============================
 
-  const saveMutation =
-    useMutation({
-      mutationFn: async (
-        payload
-      ) => {
-        if (isEditMode) {
-          return updateInvoice(
-            editId,
-            payload
-          );
+  const saveMutation = useMutation({
+    mutationFn: async (payload) => {
+      if (isEditMode) {
+        return updateInvoice(editId, payload);
+      }
+
+      return createInvoice(payload);
+    },
+
+    onSuccess: async (saved) => {
+      enqueueSnackbar(
+        isEditMode
+          ? `Invoice ${saved.invoiceNo} updated`
+          : `Invoice ${saved.invoiceNo} saved`,
+        {
+          variant: "success",
         }
+      );
 
-        return createInvoice(
-          payload
-        );
-      },
+      queryClient.invalidateQueries({
+        queryKey: ["invoices"],
+      });
 
-      onSuccess: async (
-        saved
-      ) => {
+      // Numbering is shared by customer and dealer, so refresh both previews.
+      ["customer", "dealer"].forEach((invoiceType) =>
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.nextInvoiceNumber(invoiceType),
+        })
+      );
+
+      try {
+        await downloadInvoicePdf(saved._id, saved.invoiceNo);
+      } catch {
         enqueueSnackbar(
           isEditMode
-            ? `Invoice ${saved.invoiceNo} updated`
-            : `Invoice ${saved.invoiceNo} saved`,
+            ? "Invoice updated, but PDF download failed."
+            : "Saved, but PDF download failed — try downloading from Saved Invoices.",
           {
-            variant: "success",
+            variant: "warning",
           }
         );
+      }
 
-        queryClient.invalidateQueries(
-          {
-            queryKey: ["invoices"],
-          }
-        );
+      // After edit return to invoice list
+      if (isEditMode) {
+        router.push("/invoices");
+        return;
+      }
 
-        queryClient.invalidateQueries(
-          {
-            queryKey:
-              queryKeys.nextInvoiceNumber(
-                type
-              ),
-          }
-        );
+      // After create reset for next invoice
+      setInvoiceNoTouched(false);
 
-        try {
-          await downloadInvoicePdf(
-            saved._id,
-            saved.invoiceNo
-          );
-        } catch {
-          enqueueSnackbar(
-            isEditMode
-              ? "Invoice updated, but PDF download failed."
-              : "Saved, but PDF download failed — try downloading from Saved Invoices.",
-            {
-              variant: "warning",
-            }
-          );
+      setForm(buildInitialForm(config, undefined, type));
+    },
+
+    onError: (err) => {
+      enqueueSnackbar(
+        `${isEditMode ? "Error updating" : "Error saving"} invoice: ${err.message}`,
+        {
+          variant: "error",
         }
-
-        // After edit return to invoice list
-        if (isEditMode) {
-          router.push("/invoices");
-          return;
-        }
-
-        // After create reset for next invoice
-        setInvoiceNoTouched(false);
-
-        setForm(
-          buildInitialForm(
-            config,
-            undefined,
-            type
-          )
-        );
-      },
-
-      onError: (err) => {
-        enqueueSnackbar(
-          `${
-            isEditMode
-              ? "Error updating"
-              : "Error saving"
-          } invoice: ${
-            err.message
-          }`,
-          {
-            variant: "error",
-          }
-        );
-      },
-    });
+      );
+    },
+  });
 
   // ============================
   // PREVIEW
   // ============================
 
-  const previewMutation =
-    useMutation({
-      mutationFn:
-        previewInvoicePdfUrl,
+  const previewMutation = useMutation({
+    mutationFn: previewInvoicePdfUrl,
 
-      onSuccess: (url) => {
-        setPreviewUrl(url);
-      },
+    onSuccess: (url) => {
+      setPreviewUrl(url);
+    },
 
-      onError: (err) => {
-        enqueueSnackbar(
-          `Error generating preview: ${err.message}`,
-          {
-            variant: "error",
-          }
-        );
-      },
-    });
+    onError: (err) => {
+      enqueueSnackbar(`Error generating preview: ${err.message}`, {
+        variant: "error",
+      });
+    },
+  });
 
   const handlePreview = () => {
     setPreviewOpen(true);
 
-    previewMutation.mutate(
-      form
-    );
+    previewMutation.mutate(form);
   };
 
   // ============================
@@ -685,11 +506,7 @@ export default function InvoiceForm() {
   // ============================
 
   const handleReset = () => {
-    if (
-      !window.confirm(
-        "Clear the form and start over?"
-      )
-    ) {
+    if (!window.confirm("Clear the form and start over?")) {
       return;
     }
 
@@ -698,9 +515,7 @@ export default function InvoiceForm() {
     setForm(
       buildInitialForm(
         config,
-        isEditMode
-          ? form?.invoiceNo
-          : nextNumberData?.invoiceNo,
+        isEditMode ? form?.invoiceNo : nextNumberData?.invoiceNo,
         type
       )
     );
@@ -710,54 +525,31 @@ export default function InvoiceForm() {
   // TOTAL PREVIEW
   // ============================
 
-  const totalPreview =
-    useMemo(() => {
-      if (!form) {
-        return 0;
-      }
+  const totalPreview = useMemo(() => {
+    if (!form) {
+      return 0;
+    }
 
-      return form.items.reduce(
-        (
-          sum,
-          item
-        ) =>
-          sum +
-          (Number(item.qty) || 0) *
-            (Number(item.rate) || 0),
-        0
-      );
-    }, [form]);
+    return form.items.reduce(
+      (sum, item) => sum + (Number(item.qty) || 0) * (Number(item.rate) || 0),
+      0
+    );
+  }, [form]);
 
   // ============================
   // LOADING
   // ============================
 
-  if (
-    configLoading ||
-    editLoading ||
-    !form
-  ) {
+  if (configLoading || editLoading || !form) {
     return (
       <Stack spacing={2}>
-        <Skeleton
-          variant="rounded"
-          height={56}
-        />
+        <Skeleton variant="rounded" height={56} />
 
-        <Skeleton
-          variant="rounded"
-          height={140}
-        />
+        <Skeleton variant="rounded" height={140} />
 
-        <Skeleton
-          variant="rounded"
-          height={200}
-        />
+        <Skeleton variant="rounded" height={200} />
 
-        <Skeleton
-          variant="rounded"
-          height={200}
-        />
+        <Skeleton variant="rounded" height={200} />
       </Stack>
     );
   }
@@ -781,20 +573,12 @@ export default function InvoiceForm() {
           }}
         >
           <Typography variant="body2">
-            Editing invoice{" "}
-            <strong>
-              {form.invoiceNo}
-            </strong>
+            Editing invoice <strong>{form.invoiceNo}</strong>
           </Typography>
         </Paper>
       )}
 
-      <InvoiceTypeTabs
-        value={type}
-        onChange={
-          handleTypeChange
-        }
-      />
+      <InvoiceTypeTabs value={type} onChange={handleTypeChange} />
 
       {/* INVOICE DETAILS */}
 
@@ -803,14 +587,11 @@ export default function InvoiceForm() {
           label="Invoice No."
           value={form.invoiceNo}
           onChange={(e) => {
-            setInvoiceNoTouched(
-              true
-            );
+            setInvoiceNoTouched(true);
 
             setForm({
               ...form,
-              invoiceNo:
-                e.target.value,
+              invoiceNo: e.target.value,
             });
           }}
           placeholder="SRF/26-27/12"
@@ -820,14 +601,11 @@ export default function InvoiceForm() {
         <Field
           label="Invoice Date"
           type="date"
-          value={
-            form.invoiceDate
-          }
+          value={form.invoiceDate}
           onChange={(e) =>
             setForm({
               ...form,
-              invoiceDate:
-                e.target.value,
+              invoiceDate: e.target.value,
             })
           }
           required
@@ -835,14 +613,11 @@ export default function InvoiceForm() {
 
         <Field
           label="Place of Supply"
-          value={
-            form.placeOfSupply
-          }
+          value={form.placeOfSupply}
           onChange={(e) =>
             setForm({
               ...form,
-              placeOfSupply:
-                e.target.value,
+              placeOfSupply: e.target.value,
             })
           }
         />
@@ -861,11 +636,7 @@ export default function InvoiceForm() {
           borderRadius: 2,
         }}
       >
-        <Typography
-          variant="h6"
-          color="primary"
-          gutterBottom
-        >
+        <Typography variant="h6" color="primary" gutterBottom>
           Company (Seller) Details
         </Typography>
 
@@ -890,119 +661,62 @@ export default function InvoiceForm() {
           <Button
             component="label"
             variant="outlined"
-            startIcon={
-              <UploadIcon />
-            }
+            startIcon={<UploadIcon />}
             size="small"
           >
             Upload Logo
-
             <input
               type="file"
               accept="image/*"
               hidden
-              onChange={
-                handleLogoUpload
-              }
+              onChange={handleLogoUpload}
             />
           </Button>
 
-          <Typography
-            variant="caption"
-            color="text.secondary"
-          >
-            PDF header me yahi logo
-            print hoga. Default logo
-            Settings me set hota hai.
+          <Typography variant="caption" color="text.secondary">
+            PDF header me yahi logo print hoga. Default logo Settings me set
+            hota hai.
           </Typography>
         </Stack>
 
         <Grid container spacing={2}>
           <Field
             label="Company Name"
-            value={
-              form.company.name
-            }
-            onChange={(e) =>
-              setNested(
-                "company",
-                "name",
-                e.target.value
-              )
-            }
+            value={form.company.name}
+            onChange={(e) => setNested("company", "name", e.target.value)}
             md={6}
           />
 
           <Field
             label="GSTIN"
-            value={
-              form.company.gstin
-            }
-            onChange={(e) =>
-              setNested(
-                "company",
-                "gstin",
-                e.target.value
-              )
-            }
+            value={form.company.gstin}
+            onChange={(e) => setNested("company", "gstin", e.target.value)}
             md={6}
           />
 
           <Field
             label="Address"
-            value={
-              form.company.address
-            }
-            onChange={(e) =>
-              setNested(
-                "company",
-                "address",
-                e.target.value
-              )
-            }
+            value={form.company.address}
+            onChange={(e) => setNested("company", "address", e.target.value)}
             md={12}
           />
 
           <Field
             label="Phone"
-            value={
-              form.company.phone
-            }
-            onChange={(e) =>
-              setNested(
-                "company",
-                "phone",
-                e.target.value
-              )
-            }
+            value={form.company.phone}
+            onChange={(e) => setNested("company", "phone", e.target.value)}
           />
 
           <Field
             label="Email"
-            value={
-              form.company.email
-            }
-            onChange={(e) =>
-              setNested(
-                "company",
-                "email",
-                e.target.value
-              )
-            }
+            value={form.company.email}
+            onChange={(e) => setNested("company", "email", e.target.value)}
           />
 
           <Field
             label="Website"
-            value={
-              form.company.website
-            }
-            onChange={(e) =>
-              setNested(
-                "company",
-                "website",
-                e.target.value
-              )
-            }
+            value={form.company.website}
+            onChange={(e) => setNested("company", "website", e.target.value)}
           />
         </Grid>
       </Paper>
@@ -1013,9 +727,7 @@ export default function InvoiceForm() {
         <PartyFields
           type={type}
           party={form.billTo}
-          onChange={
-            setBillToField
-          }
+          onChange={setBillToField}
         />
       </SectionCard>
 
@@ -1036,28 +748,18 @@ export default function InvoiceForm() {
           control={
             <Checkbox
               checked={copySame}
-              onChange={(e) =>
-                handleCopySameToggle(
-                  e.target.checked
-                )
-              }
+              onChange={(e) => handleCopySameToggle(e.target.checked)}
             />
           }
           label="Ship To same as Bill To"
         />
 
         {!copySame && (
-          <Grid
-            container
-            spacing={2}
-            sx={{ mt: 1 }}
-          >
+          <Grid container spacing={2} sx={{ mt: 1 }}>
             <PartyFields
               type={type}
               party={form.shipTo}
-              onChange={
-                setShipToField
-              }
+              onChange={setShipToField}
             />
           </Grid>
         )}
@@ -1068,83 +770,57 @@ export default function InvoiceForm() {
       <SectionCard title="Transport Details">
         <Field
           label="Transporter"
-          value={
-            form.transport
-              .transporter
-          }
+          value={form.transport.transporter}
           onChange={(e) =>
-            setNested(
-              "transport",
-              "transporter",
-              e.target.value
-            )
+            setNested("transport", "transporter", e.target.value)
           }
         />
 
         <Field
           label="LR No."
-          value={
-            form.transport.lrNo
-          }
-          onChange={(e) =>
-            setNested(
-              "transport",
-              "lrNo",
-              e.target.value
-            )
-          }
+          value={form.transport.lrNo}
+          onChange={(e) => setNested("transport", "lrNo", e.target.value)}
         />
 
         <Field
           label="LR Date"
           type="date"
-          value={
-            form.transport.lrDate
-          }
-          onChange={(e) =>
-            setNested(
-              "transport",
-              "lrDate",
-              e.target.value
-            )
-          }
+          value={form.transport.lrDate}
+          onChange={(e) => setNested("transport", "lrDate", e.target.value)}
         />
 
         <Field
           label="Vehicle No."
-          value={
-            form.transport.vehicleNo
-          }
-          onChange={(e) =>
-            setNested(
-              "transport",
-              "vehicleNo",
-              e.target.value
-            )
-          }
+          value={form.transport.vehicleNo}
+          onChange={(e) => setNested("transport", "vehicleNo", e.target.value)}
         />
 
         <Field
           label="E-Way Bill"
-          value={
-            form.transport.ewayBill
-          }
+          value={form.transport.ewayBill}
+          onChange={(e) => setNested("transport", "ewayBill", e.target.value)}
+        />
+
+        <Field
+          label="Driver Name"
+          value={form.transport.driverName}
+          onChange={(e) => setNested("transport", "driverName", e.target.value)}
+        />
+
+        <Field
+          label="Driver Phone No."
+          type="tel"
+          value={form.transport.driverPhone}
+          placeholder="+91 98765 43210"
           onChange={(e) =>
-            setNested(
-              "transport",
-              "ewayBill",
-              e.target.value
-            )
+            setNested("transport", "driverPhone", sanitizePhone(e.target.value))
           }
         />
       </SectionCard>
 
       {/* ITEMS */}
 
-      <ItemsTable
-        items={form.items}
-        setItems={setItems}
-      />
+      <ItemsTable items={form.items} setItems={setItems} />
 
       {/* TAX */}
 
@@ -1156,9 +832,7 @@ export default function InvoiceForm() {
           onChange={(e) =>
             setForm({
               ...form,
-              discount: Number(
-                e.target.value
-              ),
+              discount: Number(e.target.value),
             })
           }
         />
@@ -1166,15 +840,11 @@ export default function InvoiceForm() {
         <Field
           label="CGST %"
           type="number"
-          value={
-            form.cgstPercent
-          }
+          value={form.cgstPercent}
           onChange={(e) =>
             setForm({
               ...form,
-              cgstPercent: Number(
-                e.target.value
-              ),
+              cgstPercent: Number(e.target.value),
             })
           }
         />
@@ -1182,15 +852,11 @@ export default function InvoiceForm() {
         <Field
           label="SGST %"
           type="number"
-          value={
-            form.sgstPercent
-          }
+          value={form.sgstPercent}
           onChange={(e) =>
             setForm({
               ...form,
-              sgstPercent: Number(
-                e.target.value
-              ),
+              sgstPercent: Number(e.target.value),
             })
           }
         />
@@ -1201,72 +867,32 @@ export default function InvoiceForm() {
       <SectionCard title="Bank Details">
         <Field
           label="Bank Name"
-          value={
-            form.bank.bankName
-          }
-          onChange={(e) =>
-            setNested(
-              "bank",
-              "bankName",
-              e.target.value
-            )
-          }
+          value={form.bank.bankName}
+          onChange={(e) => setNested("bank", "bankName", e.target.value)}
         />
 
         <Field
           label="Account Name"
-          value={
-            form.bank.accountName
-          }
-          onChange={(e) =>
-            setNested(
-              "bank",
-              "accountName",
-              e.target.value
-            )
-          }
+          value={form.bank.accountName}
+          onChange={(e) => setNested("bank", "accountName", e.target.value)}
         />
 
         <Field
           label="Account No."
-          value={
-            form.bank.accountNo
-          }
-          onChange={(e) =>
-            setNested(
-              "bank",
-              "accountNo",
-              e.target.value
-            )
-          }
+          value={form.bank.accountNo}
+          onChange={(e) => setNested("bank", "accountNo", e.target.value)}
         />
 
         <Field
           label="IFSC Code"
-          value={
-            form.bank.ifsc
-          }
-          onChange={(e) =>
-            setNested(
-              "bank",
-              "ifsc",
-              e.target.value
-            )
-          }
+          value={form.bank.ifsc}
+          onChange={(e) => setNested("bank", "ifsc", e.target.value)}
         />
 
         <Field
           label="Branch"
-          value={
-            form.bank.branch
-          }
-          onChange={(e) =>
-            setNested(
-              "bank",
-              "branch",
-              e.target.value
-            )
-          }
+          value={form.bank.branch}
+          onChange={(e) => setNested("bank", "branch", e.target.value)}
         />
       </SectionCard>
 
@@ -1283,29 +909,19 @@ export default function InvoiceForm() {
           borderRadius: 2,
         }}
       >
-        <Typography
-          variant="h6"
-          color="primary"
-          gutterBottom
-        >
-          Terms &amp; Conditions
-          (one per line)
+        <Typography variant="h6" color="primary" gutterBottom>
+          Terms &amp; Conditions (one per line)
         </Typography>
 
         <TextField
           multiline
           minRows={4}
           fullWidth
-          value={form.terms.join(
-            "\n"
-          )}
+          value={form.terms.join("\n")}
           onChange={(e) =>
             setForm({
               ...form,
-              terms:
-                e.target.value.split(
-                  "\n"
-                ),
+              terms: e.target.value.split("\n"),
             })
           }
         />
@@ -1323,8 +939,7 @@ export default function InvoiceForm() {
           bottom: 0,
           bgcolor: "#fff",
           zIndex: 2,
-          boxShadow:
-            "0 -2px 8px rgba(0,0,0,0.08)",
+          boxShadow: "0 -2px 8px rgba(0,0,0,0.08)",
         }}
       >
         <Stack
@@ -1341,56 +956,32 @@ export default function InvoiceForm() {
               mr: "auto",
             }}
           >
-            Items total (before tax):{" "}
-            <b>
-              Rs.{" "}
-              {totalPreview.toFixed(
-                2
-              )}
-            </b>
+            Items total (before tax): <b>Rs. {totalPreview.toFixed(2)}</b>
           </Typography>
 
           <Button
             variant="text"
             color="inherit"
-            startIcon={
-              <RestartAltIcon />
-            }
-            onClick={
-              handleReset
-            }
+            startIcon={<RestartAltIcon />}
+            onClick={handleReset}
           >
             Reset
           </Button>
 
           <Button
             variant="outlined"
-            startIcon={
-              <PictureAsPdfIcon />
-            }
-            onClick={
-              handlePreview
-            }
-            disabled={
-              previewMutation.isPending
-            }
+            startIcon={<PictureAsPdfIcon />}
+            onClick={handlePreview}
+            disabled={previewMutation.isPending}
           >
             Preview
           </Button>
 
           <Button
             variant="contained"
-            startIcon={
-              <SaveIcon />
-            }
-            onClick={() =>
-              saveMutation.mutate(
-                form
-              )
-            }
-            disabled={
-              saveMutation.isPending
-            }
+            startIcon={<SaveIcon />}
+            onClick={() => saveMutation.mutate(form)}
+            disabled={saveMutation.isPending}
           >
             {saveMutation.isPending
               ? isEditMode
@@ -1407,13 +998,9 @@ export default function InvoiceForm() {
 
       <PreviewDialog
         open={previewOpen}
-        onClose={() =>
-          setPreviewOpen(false)
-        }
+        onClose={() => setPreviewOpen(false)}
         previewUrl={previewUrl}
-        loading={
-          previewMutation.isPending
-        }
+        loading={previewMutation.isPending}
       />
     </Box>
   );

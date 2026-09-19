@@ -9,53 +9,145 @@ function withGrandTotal(payload) {
   return { ...payload, grandTotal: t.grandTotal };
 }
 
+// Escape user input before using it inside a $regex so characters like ( or [ don't break the query.
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// ============================
+// INVOICE NUMBER HELPERS
+// Customer and dealer invoices share ONE number series.
+// The prefix differs per type, the trailing number never repeats:
+//   dealer   -> SRF/2026-27/07
+//   customer -> SRF/26-27/08
+// ============================
+
+// "SRF/26-27/08" -> 8, "SRF/2026-27/010" -> 10, no trailing digits -> null
+function getInvoiceSeq(invoiceNo) {
+  const match = String(invoiceNo || "").trim().match(/(\d+)\s*$/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+// Finds another invoice (of ANY type) that already uses the same trailing number.
+async function findSeqConflict(invoiceNo, excludeId) {
+  const seq = getInvoiceSeq(invoiceNo);
+  if (seq === null) return null;
+
+  const filter = { invoiceNo: { $regex: `(^|\\D)0*${seq}\\s*$` } };
+  if (excludeId) filter._id = { $ne: excludeId };
+
+  return Invoice.findOne(filter).select("invoiceNo").lean();
+}
+
+function conflictMessage(invoiceNo, conflict) {
+  const seq = getInvoiceSeq(invoiceNo);
+  return `Invoice number ${seq} is already used by ${conflict.invoiceNo}. Customer and dealer invoices share one number series.`;
+}
+
+// Move both counters past the number just used so the next suggestion is always fresh.
+// $max is atomic and never moves a counter backwards.
+function bumpNumbering(invoiceNo) {
+  const seq = getInvoiceSeq(invoiceNo);
+  if (seq === null) return;
+
+  const next = seq + 1;
+
+  Config.findByIdAndUpdate("app-config", {
+    $max: {
+      "numbering.customer.nextSeq": next,
+      "numbering.dealer.nextSeq": next,
+    },
+  }).catch(() => {});
+}
+
+// Natural order by the trailing number (7, 8, 9, 10 ...), then by full invoice number.
+function compareInvoiceNo(a, b) {
+  const sa = getInvoiceSeq(a.invoiceNo);
+  const sb = getInvoiceSeq(b.invoiceNo);
+
+  if (sa !== sb) {
+    if (sa === null) return 1;
+    if (sb === null) return -1;
+    return sa - sb;
+  }
+
+  const byNo = String(a.invoiceNo || "").localeCompare(String(b.invoiceNo || ""), "en", {
+    numeric: true,
+  });
+  if (byNo !== 0) return byNo;
+
+  return String(a._id).localeCompare(String(b._id));
+}
+
 // Create a new invoice
 exports.createInvoice = asyncHandler(async (req, res) => {
+  const conflict = await findSeqConflict(req.body.invoiceNo);
+  if (conflict) {
+    return res.status(409).json({ message: conflictMessage(req.body.invoiceNo, conflict) });
+  }
+
   const invoice = await Invoice.create(withGrandTotal(req.body));
 
-  // Best-effort: bump the numbering counter for this type so the *next*
-  // suggested invoice number moves forward. Never blocks/breaks the save.
-  const type = invoice.type === "dealer" ? "dealer" : "customer";
-  Config.findByIdAndUpdate("app-config", { $inc: { [`numbering.${type}.nextSeq`]: 1 } }).catch(() => {});
+  // Best-effort: never blocks/breaks the save.
+  bumpNumbering(invoice.invoiceNo);
 
   res.status(201).json(invoice);
 });
 
 // GET /api/invoices  — server-side paginated, searchable, sortable list.
 // Query params: page (1-based), limit, search, type, sort
+// Default sort is by invoice number (natural order: .../9 comes before .../10).
 exports.getInvoices = asyncHandler(async (req, res) => {
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 100);
   const search = (req.query.search || "").trim();
   const type = req.query.type;
-  const sort = req.query.sort || "newest";
+  const sort = req.query.sort || "invoiceNo";
 
   const filter = {};
   if (type === "customer" || type === "dealer") filter.type = type;
   if (search) {
+    const pattern = escapeRegex(search);
     filter.$or = [
-      { invoiceNo: { $regex: search, $options: "i" } },
-      { "billTo.name": { $regex: search, $options: "i" } },
-      { "shipTo.name": { $regex: search, $options: "i" } },
+      { invoiceNo: { $regex: pattern, $options: "i" } },
+      { "billTo.name": { $regex: pattern, $options: "i" } },
+      { "shipTo.name": { $regex: pattern, $options: "i" } },
     ];
   }
 
+  const skip = (page - 1) * limit;
+
+  // `_id` is a tie-breaker so pagination stays stable when values repeat.
   const sortMap = {
-    newest: { createdAt: -1 },
-    oldest: { createdAt: 1 },
-    invoiceNo: { invoiceNo: 1 },
-    amountHigh: { grandTotal: -1 },
-    amountLow: { grandTotal: 1 },
+    newest: { createdAt: -1, _id: -1 },
+    oldest: { createdAt: 1, _id: 1 },
+    amountHigh: { grandTotal: -1, _id: 1 },
+    amountLow: { grandTotal: 1, _id: 1 },
   };
 
-  const [items, total] = await Promise.all([
-    Invoice.find(filter)
-      .sort(sortMap[sort] || sortMap.newest)
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .lean(),
-    Invoice.countDocuments(filter),
-  ]);
+  let items;
+  let total;
+
+  if (sortMap[sort]) {
+    [items, total] = await Promise.all([
+      Invoice.find(filter).sort(sortMap[sort]).skip(skip).limit(limit).lean(),
+      Invoice.countDocuments(filter),
+    ]);
+  } else {
+    // Invoice No. sort (default). Done in code instead of the database so it works on every
+    // MongoDB version and sorts numerically. Only ids + invoice numbers are loaded to sort,
+    // then just the current page is fetched in full.
+    const rows = await Invoice.find(filter).select("invoiceNo").lean();
+    rows.sort(compareInvoiceNo);
+
+    total = rows.length;
+
+    const pageIds = rows.slice(skip, skip + limit).map((r) => r._id);
+    const docs = await Invoice.find({ _id: { $in: pageIds } }).lean();
+    const byId = new Map(docs.map((d) => [String(d._id), d]));
+
+    items = pageIds.map((id) => byId.get(String(id))).filter(Boolean);
+  }
 
   res.json({
     items,
@@ -75,11 +167,25 @@ exports.getInvoiceById = asyncHandler(async (req, res) => {
 
 // Update invoice
 exports.updateInvoice = asyncHandler(async (req, res) => {
+  const existing = await Invoice.findById(req.params.id).select("invoiceNo").lean();
+  if (!existing) return res.status(404).json({ message: "Invoice not found" });
+
+  // Only re-check when the number was actually changed (old data may already overlap).
+  if (req.body.invoiceNo && req.body.invoiceNo !== existing.invoiceNo) {
+    const conflict = await findSeqConflict(req.body.invoiceNo, req.params.id);
+    if (conflict) {
+      return res.status(409).json({ message: conflictMessage(req.body.invoiceNo, conflict) });
+    }
+  }
+
   const invoice = await Invoice.findByIdAndUpdate(req.params.id, withGrandTotal(req.body), {
     new: true,
     runValidators: true,
   });
   if (!invoice) return res.status(404).json({ message: "Invoice not found" });
+
+  if (invoice.invoiceNo !== existing.invoiceNo) bumpNumbering(invoice.invoiceNo);
+
   res.json(invoice);
 });
 
