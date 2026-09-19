@@ -121,3 +121,59 @@ exports.calculateTotals = asyncHandler(async (req, res) => {
   const totals = computeTotals(req.body);
   res.json(totals);
 });
+
+// Get invoice statistics
+// These statistics are independent of pagination/search/filter.
+exports.getInvoiceStats = asyncHandler(async (req, res) => {
+  const stats = await Invoice.aggregate([
+    {
+      $group: {
+        _id: null,
+
+        totalInvoices: {
+          $sum: 1,
+        },
+
+        customerInvoices: {
+          $sum: {
+            $cond: [
+              { $eq: ["$type", "customer"] },
+              1,
+              0,
+            ],
+          },
+        },
+
+        dealerInvoices: {
+          $sum: {
+            $cond: [
+              { $eq: ["$type", "dealer"] },
+              1,
+              0,
+            ],
+          },
+        },
+
+        totalAmount: {
+          $sum: {
+            $ifNull: ["$grandTotal", 0],
+          },
+        },
+      },
+    },
+  ]);
+
+  const result = stats[0] || {
+    totalInvoices: 0,
+    customerInvoices: 0,
+    dealerInvoices: 0,
+    totalAmount: 0,
+  };
+
+  res.json({
+    totalInvoices: result.totalInvoices || 0,
+    customerInvoices: result.customerInvoices || 0,
+    dealerInvoices: result.dealerInvoices || 0,
+    totalAmount: result.totalAmount || 0,
+  });
+});
